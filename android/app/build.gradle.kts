@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.lisa.assistant"
 
-    // compileSdk কে flutter এর default (এখন 36) এ ফিরিয়ে রাখা হয়েছে।
+    // compileSdk কে flutter এর default এ রাখা হয়েছে।
     // কারণ androidx.core এর নতুন version (flutter_local_notifications,
     // permission_handler এর মাধ্যমে আসছে) compileSdk 36+ দাবি করে —
     // compileSdk 34 এ আটকে রাখলে build error হয়।
@@ -26,6 +26,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+
+        // flutter_local_notifications package Java 8+ এর কিছু API
+        // (যেমন java.time) ব্যবহার করে, যেগুলো পুরনো Android version এ
+        // সরাসরি সাপোর্ট করে না। "Core library desugaring" enable করলে
+        // Android Gradle Plugin স্বয়ংক্রিয়ভাবে এই নতুন API গুলোকে
+        // পুরনো Android API তে রূপান্তর করে দেয়, যাতে minSdk 24 থেকেও
+        // এই package ঠিকভাবে কাজ করে।
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -50,6 +58,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    // core library desugaring এর জন্য আবশ্যক library।
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {
