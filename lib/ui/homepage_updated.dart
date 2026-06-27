@@ -174,7 +174,7 @@ class _HomePageUpdatedState extends State<HomePageUpdated> {
                 widget.isListening ? 'বলুন...' : 'ট্যাপ করে বলুন',
                 style: const TextStyle(color: Colors.white54, fontSize: 14),
               ),
-              if (widget.spokenText.isNotEmpty) ...[{
+              if (widget.spokenText.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -191,7 +191,7 @@ class _HomePageUpdatedState extends State<HomePageUpdated> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-              }],
+              ],
               const SizedBox(height: 24),
               const Align(
                 alignment: Alignment.centerLeft,
