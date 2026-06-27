@@ -3,11 +3,16 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'router/command_router.dart';
 import 'ui/homepage.dart';
+import 'ui/pages/notes_page.dart';
+import 'ui/pages/history_page.dart';
+import 'ui/pages/settings_page.dart';
 import 'ui/overly_manager.dart';
+import 'ui/splash_screen.dart';
 import 'core/tts_service.dart';
 import 'core/speech_service.dart';
 import 'core/wake_word.dart';
 import 'core/feedback_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,9 +52,8 @@ class _LisaMainState extends State<LisaMain> {
   bool _isListening = false;
   bool _permissionsReady = false;
   String _spokenText = '';
+  int _currentPageIndex = 0;
 
-  // GlobalKey এর type হতে হবে State class (_OverlayHostState),
-  // widget class নয়। এটাই ছিল showOverlay না পাওয়ার মূল কারণ।
   final GlobalKey<_OverlayHostState> _overlayKey =
       GlobalKey<_OverlayHostState>();
 
@@ -59,39 +63,28 @@ class _LisaMainState extends State<LisaMain> {
     _init();
   }
 
-  // পুরো init প্রক্রিয়াটা try-catch দিয়ে wrap করা হয়েছে।
-  // কোনো plugin (TTS, speech_to_text) ব্যর্থ হলেও পুরো app
-  // crash না করে স্বাভাবিকভাবে চলতে থাকবে।
   Future<void> _init() async {
     try {
-      // ধাপ ১ — সব প্রয়োজনীয় runtime permission চেয়ে নেওয়া।
-      // Manifest এ permission declare করা যথেষ্ট নয়; Android 6.0+
-      // এ ব্যবহারকারীর কাছ থেকে সরাসরি অনুমতি নিতে হয়, নাহলে
-      // mic/camera ব্যবহার করা plugin গুলো crash করে।
       await _requestPermissions();
 
-      // ধাপ ২ — TTS init (ব্যর্থ হলেও app বন্ধ হবে না)
       try {
         await _ttsService.init();
       } catch (e) {
         debugPrint('TTS init failed: $e');
       }
 
-      // ধাপ ৩ — Speech service init (ব্যর্থ হলেও app বন্ধ হবে না)
       try {
         await _speechService.initialize();
       } catch (e) {
         debugPrint('Speech service init failed: $e');
       }
 
-      // ধাপ ৪ — Feedback service (notification + vibration) init
       try {
         await _feedbackService.init();
       } catch (e) {
         debugPrint('Feedback service init failed: $e');
       }
 
-      // ধাপ ৫ — Router তৈরি করা
       _router = CommandRouter(
         tts: _ttsService.engine,
         showOverlay: (widget) {
@@ -104,8 +97,6 @@ class _LisaMainState extends State<LisaMain> {
       }
     } catch (e) {
       debugPrint('LISA init error: $e');
-      // এখানে কোনো রিথ্রো নেই, তাই app চালু থাকবে এবং
-      // UI স্বাভাবিকভাবে দেখানো হবে, এমনকি init partially fail করলেও।
       if (mounted) {
         setState(() => _permissionsReady = true);
       }
@@ -118,7 +109,6 @@ class _LisaMainState extends State<LisaMain> {
       Permission.camera,
       Permission.phone,
       Permission.sms,
-      // Android 13+ এ notification দেখানোর জন্য runtime permission লাগে।
       Permission.notification,
     ].request();
 
@@ -126,7 +116,7 @@ class _LisaMainState extends State<LisaMain> {
         statuses[Permission.microphone]?.isGranted ?? false;
 
     if (!micGranted) {
-      debugPrint('Microphone permission not granted — voice command কাজ করবে না।');
+      debugPrint('Microphone permission not granted — voice command won\'t work.');
     }
   }
 
@@ -165,19 +155,13 @@ class _LisaMainState extends State<LisaMain> {
           setState(() => _spokenText = text);
 
           if (WakeWord.detected(text)) {
-            // ধাপ ১ — wake word ধরা পড়ার সাথে সাথেই
-            // notification + vibration দিয়ে feedback দেওয়া।
-            // অন্য কোনো app খোলা থাকলেও notification বার এ
-            // এটা দেখা যাবে, যা ব্যবহারকারীকে জানাবে যে
-            // LISA সাড়া দিয়েছে।
             await _feedbackService.onListeningStarted();
-
             await _feedbackService.onProcessing();
 
             final result = await _router!.route(text);
 
-            // ধাপ ২ — command সম্পন্ন হওয়ার পর result অনুযায়ী
-            // আলাদা feedback (success/failed) দেওয়া।
+            await _saveToHistory(text, result.success, result.message);
+
             if (result.success) {
               await _feedbackService.onCommandSuccess(result.message);
             } else {
@@ -195,6 +179,20 @@ class _LisaMainState extends State<LisaMain> {
     }
   }
 
+  Future<void> _saveToHistory(
+    String command,
+    bool success,
+    String message,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList('command_history') ?? [];
+    final timestamp = DateTime.now().toString().split('.')[0];
+    final entry = '${success ? 'success' : 'failed'}|$command|$message|$timestamp';
+    history.insert(0, entry);
+    if (history.length > 100) history.removeAt(100);
+    await prefs.setStringList('command_history', history);
+  }
+
   @override
   void dispose() {
     _speechService.stopListening();
@@ -205,28 +203,39 @@ class _LisaMainState extends State<LisaMain> {
   @override
   Widget build(BuildContext context) {
     if (!_permissionsReady) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF070722),
-        body: Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
-      );
+      return const SplashScreen();
     }
 
     return _OverlayHost(
       key: _overlayKey,
       child: Scaffold(
-        body: HomePage(
-          isListening: _isListening,
-          spokenText: _spokenText,
-          onMicTap: _toggleListening,
-        ),
+        body: _buildPage(),
       ),
     );
   }
+
+  Widget _buildPage() {
+    switch (_currentPageIndex) {
+      case 0:
+        return HomePage(
+          isListening: _isListening,
+          spokenText: _spokenText,
+          onMicTap: _toggleListening,
+          tts: _ttsService.engine,
+          speechService: _speechService,
+        );
+      case 1:
+        return const NotesPage();
+      case 2:
+        return const HistoryPage();
+      case 3:
+        return const SettingsPage();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
 }
 
-// Overlay দেখানোর জন্য host widget — এর state class এ showOverlay() method আছে
 class _OverlayHost extends StatefulWidget {
   final Widget child;
 
