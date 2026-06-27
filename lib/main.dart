@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'router/command_router.dart';
-import 'ui/homepage.dart';
+import 'ui/homepage_updated.dart';
 import 'ui/pages/notes_page.dart';
 import 'ui/pages/history_page.dart';
 import 'ui/pages/settings_page.dart';
@@ -193,6 +193,14 @@ class _LisaMainState extends State<LisaMain> {
     await prefs.setStringList('command_history', history);
   }
 
+  // Bottom nav থেকে page পরিবর্তনের জন্য — এর আগে main.dart এ এই
+  // callback টা ব্যবহারই হতো না, তাই Notes/History/Settings এ ক্লিক
+  // করলে কিছু হতো না। এখন HomePageUpdated.onPageChanged থেকে আসা
+  // index দিয়ে _currentPageIndex আপডেট হয়, যা _buildPage() switch করে।
+  void _onPageChanged(int index) {
+    setState(() => _currentPageIndex = index);
+  }
+
   @override
   void dispose() {
     _speechService.stopListening();
@@ -217,12 +225,13 @@ class _LisaMainState extends State<LisaMain> {
   Widget _buildPage() {
     switch (_currentPageIndex) {
       case 0:
-        return HomePage(
+        return HomePageUpdated(
           isListening: _isListening,
           spokenText: _spokenText,
           onMicTap: _toggleListening,
           tts: _ttsService.engine,
           speechService: _speechService,
+          onPageChanged: _onPageChanged,
         );
       case 1:
         return const NotesPage();
