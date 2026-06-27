@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/tts_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -9,6 +10,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final TtsService _ttsService = TtsService();
+
   bool _vibrationEnabled = true;
   bool _notificationEnabled = true;
   double _ttsSpeed = 0.45;
@@ -134,9 +137,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     inactiveColor: Colors.white24,
                     onChanged: (value) {
                       setState(() => _ttsSpeed = value);
+                      // Slider টানার সাথে সাথেই TTS engine এ rate
+                      // সরাসরি apply করা হচ্ছে, যাতে পরিবর্তনটা
+                      // তাৎক্ষণিকভাবে অনুভব করা যায় — শুধু save
+                      // হওয়া আর পরের বার app খোলার সময় কার্যকর
+                      // হওয়ার বদলে।
+                      _ttsService.setRate(value);
                     },
-                    onChangeEnd: (_) async {
+                    onChangeEnd: (value) async {
                       await _saveSettings();
+                      // পরিবর্তিত গতিতে একটা ছোট sample বলে
+                      // ব্যবহারকারীকে নিশ্চিত করা যে এটা কাজ করছে।
+                      await _ttsService.speak('এটাই নতুন কথার গতি।');
                     },
                   ),
                 ],
@@ -183,9 +195,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     inactiveColor: Colors.white24,
                     onChanged: (value) {
                       setState(() => _ttsPitch = value);
+                      _ttsService.setPitch(value);
                     },
-                    onChangeEnd: (_) async {
+                    onChangeEnd: (value) async {
                       await _saveSettings();
+                      await _ttsService.speak('এটাই নতুন ভয়েসের টোন।');
                     },
                   ),
                 ],
